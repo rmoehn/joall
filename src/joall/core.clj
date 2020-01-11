@@ -6,6 +6,9 @@
             [clojure.pprint :as pprint]
             [clojure.string :as string]))
 
+;; Note: On new projects use the new Java Time/clojure.java-time instead of Joda
+;; Time/clj-time.
+
 (def manuscript-formatter (tformat/formatters :date-time-no-ms))
 
 ;;; Abbreviations:
@@ -16,22 +19,15 @@
                                          (clj-time.core/default-time-zone))]
     (tformat/unparse out-formatter utc-datime)))
 
-(defn interval->str [case->acct interval]
+(defn interval->str [interval]
   (let [start-datime  (tformat/parse manuscript-formatter (:dtStart interval))
         end-datime    (tformat/parse manuscript-formatter (:dtEnd interval))]
-    (format "i %s %s  %s%no %s%n"
+    (format "i %s farlamp:fb:%s  %s%no %s%n"
             (out-datime start-datime)
-            (get case->acct (:ixBug interval) "MISSING")
+            (:ixBug interval)
             (:sTitle interval)
             (out-datime end-datime))))
 
-(defn check-mappings [case->acct intervals]
-  (let [info    (set (map #(select-keys % [:ixBug :sTitle]) intervals))
-        missing (filter #(not (case->acct (:ixBug %))) info)]
-    (if (seq missing)
-      (throw (ex-info "Missing mappings from cases to accounts."
-                      {:missing missing})))))
-    
 (defn get-intervals [base-url api-token start-date]
   (get-in (http/post (str base-url "/api/listIntervals") 
                      {:form-params  {:dtStart start-date
@@ -42,7 +38,7 @@
            :data
            :intervals]))
 
-(defn run [mappings-p base-url api-token start-month-day]
+(defn run [base-url api-token start-month-day]
   (let [month-day-formatter   
         (-> (tformat/formatter (clj-time.core/default-time-zone) :date "MM-dd")
             (tformat/with-default-year 
@@ -53,20 +49,19 @@
              (tformat/parse month-day-formatter)
              (tformat/unparse manuscript-formatter))
 
-        intervals   (get-intervals base-url api-token manuscript-start-date)
-        case->acct  (edn/read-string (slurp mappings-p))]
-    (check-mappings case->acct intervals)
+        intervals   (get-intervals base-url api-token manuscript-start-date)]
+    (println)
     (->> intervals
-         (map #(interval->str case->acct %))
+         (map #(interval->str %))
          (string/join \newline)
-         println))) 
+         print)
+    (flush)))
 
 (comment
 
-  (run (System/getenv "JOALL_MAPPINGS_P")
-       (System/getenv "JOALL_MANUSCRIPT_URL") 
+  (run (System/getenv "JOALL_MANUSCRIPT_URL")
        (System/getenv "JOALL_API_TOKEN")
-       "03-21")
+       "01-06")
 
   (def response (http/post (str (System/getenv "JOALL_MANUSCRIPT_URL") "/api/listIntervals") 
                            {:form-params {:token (System/getenv "JOALL_API_TOKEN")}
